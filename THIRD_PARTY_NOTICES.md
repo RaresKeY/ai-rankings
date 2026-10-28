@@ -11,7 +11,7 @@ Changes by this project: units normalized, model labels grouped conservatively, 
 
 ## Excluded data sources
 
-The original local research workspace can contain the following datasets. They are excluded from public source history, seed packs, CI inputs and website output.
+The original local research workspace can contain the following datasets. They are excluded from public source history, seed packs and website output. The CI updater reads Epoch’s mixed archive and removes externally aggregated observations before producing public packs. It does not fetch the other excluded providers.
 
 - **Artificial Analysis:** [Website Terms](https://artificialanalysis.ai/terms-of-use), [Data Platform Terms v1.1](https://artificialanalysiscdn.com/legal/ProDataPlatformTerms.pdf), [API documentation](https://artificialanalysis.ai/data-api/docs). The terms restrict similar public ranking services, raw-data redistribution and combining data into public services. Written consent is required for this use. Free API access or a commercial subscription alone does not resolve those restrictions.
 - **SWE-bench website results:** [website repository license](https://github.com/SWE-bench/swe-bench.github.io/blob/master/LICENSE), [result file](https://github.com/SWE-bench/swe-bench.github.io/blob/master/data/leaderboards.json). The website repository uses CC BY-NC 4.0. Noncommercial-only data is excluded from the public edition. The benchmark harness and submitted agents can have different licenses.
