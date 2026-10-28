@@ -38,7 +38,7 @@ The original workspace also supports a larger local research dataset under `data
 
 ## Automated updates and hosting
 
-GitHub Actions updates approved providers daily at **05:37 UTC**, on main pushes, and on manual dispatch. It checks calculations, filters public data, builds static files and publishes to GitHub Pages. Failed or unexpectedly incomplete imports preserve the last successful data. The Sources page reports update failures, and CI marks the run unsuccessful after publishing retained data.
+GitHub Actions updates approved providers daily at **05:37 UTC** and on manual dispatch. Main pushes rebuild the website using the latest published data. It checks calculations, filters public data, builds static files and publishes to GitHub Pages. Failed or unexpectedly incomplete imports preserve the last successful data. The Sources page reports update failures, and CI marks the run unsuccessful after publishing retained data.
 
 The workflow uses installed Python, Git, gh and Chromium. It installs no dependencies. TLS uses a reviewed, pinned CA bundle configured before checkout. See [publishing specs](specs/publishing.md) for trust maintenance, retention and deployment details. GitHub schedules may be delayed and may be disabled after prolonged repository inactivity.
 

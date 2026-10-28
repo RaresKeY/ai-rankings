@@ -49,7 +49,10 @@ jobs:
         run: |
           python3 -m unittest discover -s tests -v
           python3 scripts/browser_unit_tests.py
+      - name: Restore last published data
+        run: python3 scripts/refresh_public.py --restore-only
       - name: Update approved sources
+        if: github.event_name != 'push'
         run: python3 scripts/refresh_public.py
       - name: Build public website
         run: python3 scripts/build_static.py

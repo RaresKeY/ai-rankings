@@ -3,6 +3,7 @@ import gzip
 import importlib
 import json
 import subprocess
+import sys
 import time
 import threading
 import urllib.error
@@ -46,6 +47,11 @@ def restore(root=ROOT):
         elif not (root/'data/public'/(provider+'.json')).exists():
             seed=root/'data/seed'/(provider+'.json.gz')
             if seed.exists():write_pack(json.loads(gzip.decompress(seed.read_bytes())), root/'data/public')
+    result=subprocess.run(['git','show','origin/gh-pages:data/catalog.json.gz'],cwd=root,capture_output=True)
+    if result.returncode==0:
+        status=json.loads(gzip.decompress(result.stdout)).get('updates')
+        if status:
+            (root/'data/public/update-status.json').write_text(json.dumps(status,indent=2))
 
 
 def refresh_public(root=ROOT, collectors=None, fetch_factory=None):
@@ -85,4 +91,4 @@ def refresh_public(root=ROOT, collectors=None, fetch_factory=None):
 
 if __name__ == '__main__':
     restore()
-    refresh_public()
+    if '--restore-only' not in sys.argv:refresh_public()
