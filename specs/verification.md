@@ -16,3 +16,7 @@ The JSON report and screenshots are local evidence, not committed generated asse
 ## Startup
 
 Root `play.sh` is executable and path-independent. Playpad registration resolves this root and icon. Agent verification uses `playpad run ai-rankings --development`; opening the visible browser is a separate user-facing launch. The healthy server remains available on loopback. New source network activity is confined to explicit refresh or CLI import.
+
+## Public edition
+
+Public-policy tests bring the Python suite to 34 tests; all eight calculation tests pass in Deno and the installed Chromium runner. Public source clones skip three tests requiring the private snapshots. `python scripts/public_browser_check.py` tests the static build under a project URL prefix; `--url` tests the hosted website. It checks all views, source chart fetches, preset selection, related tests, reload, license display and mobile width, and rejects unexpected API requests or JavaScript exceptions. The verified workstation renderer is NVIDIA RTX 2080 Ti. The public header has no tagline; controls and descriptions use functional labels. Arena Agent metrics are labelled percentage points (`pp`), including legacy imported packs.

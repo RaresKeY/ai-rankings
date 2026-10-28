@@ -2,7 +2,7 @@
 
 The user chose commercially reusable data only. The public repository is `RaresKeY/ai-rankings`; the static website uses GitHub Pages from `gh-pages:/`. Local `main` contains the complete research snapshots and must never be pushed. Local `public` tracks the clean public source history, published as remote `main`. Never push all branches or local history.
 
-`scripts/export_public_repo.py` creates an explicit allowlisted source tree under `.local/public-source`. Its initial Git commit has no parent. Code, tests, specs and compressed approved seed packs may be included. Private packs, raw responses, local manifests and caches are excluded. Later public commits use the previous public commit as parent. The owning local checkout remains unchanged.
+`scripts/export_public_repo.py` creates an explicit allowlisted source tree under `.local/public-source`. Its initial Git commit has no parent. Code, tests, specs and compressed approved seed packs may be included. Private packs, raw responses, local manifests and caches are excluded. Later public commits use the previous public commit as parent. `python3 scripts/commit_public.py` prepares that commit without changing the checkout; `git push origin public:main` publishes only that branch. The owning local checkout remains unchanged.
 
 ## Data policy
 
@@ -22,4 +22,4 @@ The generated gh-pages branch retains one current snapshot to bound binary histo
 
 ## Verification and retention
 
-Python tests check source rejection, Epoch provenance filtering, exclusion of auxiliary external data, fallback preservation and static build isolation. Browser calculation tests run the same eight JS tests as Deno using an installed browser and no packages. Workstation UI checks use Gamescope offscreen with real GPU rendering. Verify the hosted build manifest and browser startup after deployment. Remove reproducible dist and export directories after hosted verification; retain source, approved fallback packs and verification evidence.
+Python tests check source rejection, Epoch provenance filtering, exclusion of auxiliary external data, fallback preservation and static build isolation. Browser calculation tests run the same eight JS tests as Deno using an installed browser and no packages. Workstation UI checks use Gamescope offscreen with real GPU rendering. `scripts/verify_hosted.py` verifies the hosted manifest and HTML/JS/config/catalog hashes in CI. Verify browser startup after deployment. Remove reproducible dist and export directories after hosted verification; retain source, approved fallback packs and verification evidence.
