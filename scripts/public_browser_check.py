@@ -18,6 +18,10 @@ def check(url):
     try:
         cdp.call('Runtime.enable');cdp.call('Page.enable');cdp.call('Network.enable')
         cdp.call('Network.setCacheDisabled',{'cacheDisabled':True})
+        for _ in range(200):
+            if cdp.evaluate('Boolean(window.__rankings)'):break
+            time.sleep(.2)
+        assert cdp.evaluate('Boolean(window.__rankings)'), cdp.evaluate('document.body.innerText.slice(0,500)')
         cdp.evaluate("localStorage.removeItem('ai-rankings-state-v1')")
         cdp.call('Page.reload',{'ignoreCache':True})
         for _ in range(200):

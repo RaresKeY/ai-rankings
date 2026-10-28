@@ -4,6 +4,7 @@ import importlib
 import json
 import subprocess
 import time
+import threading
 import urllib.error
 from datetime import datetime, timezone
 
@@ -13,10 +14,21 @@ from refresh import Fetcher
 
 
 class PublicFetcher(Fetcher):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.progress_lock=threading.Lock()
+        self.request_count=0
+        self.last_request=0
+
     def __call__(self, url):
         for attempt in range(4):
             try:
-                time.sleep(.2)
+                with self.progress_lock:
+                    time.sleep(max(0, .35-(time.monotonic()-self.last_request)))
+                    self.last_request=time.monotonic()
+                    self.request_count+=1
+                    if self.request_count % 25 == 0:
+                        print(f'Public source requests: {self.request_count}', flush=True)
                 return super().__call__(url)
             except urllib.error.HTTPError as exc:
                 if exc.code not in (429, 500, 502, 503, 504) or attempt == 3:

@@ -17,8 +17,8 @@ def write_json(path,data,compressed=False):
 
 def build(root=ROOT,output=None):
     output=Path(output or root/'dist').resolve()
-    if output==root or output==root/'app' or not output.is_relative_to(root):
-        raise ValueError('Static output must be a generated directory inside the project')
+    if output != (root/'dist').resolve():
+        raise ValueError('Static output must be the project dist directory')
     if output.exists():shutil.rmtree(output)
     output.mkdir(parents=True)
     staging=root/'.local/public-build'

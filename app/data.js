@@ -2,7 +2,7 @@ import { runtime } from "./config.js";
 
 export { runtime };
 export async function readJSON(path) {
-  const response = await fetch(path);
+  const response = await fetch(path, { cache: "no-cache" });
   if (!response.ok) throw Error(`Data request failed (${response.status})`);
   if (!path.endsWith(".gz")) return response.json();
   const bytes = new Uint8Array(await response.arrayBuffer());
