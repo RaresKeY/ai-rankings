@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Calculation tests</title>
+<pre id="result">Running</pre>
+<script type="module">
+const tests=[];
+globalThis.Deno={test:(name,fn)=>tests.push([name,fn])};
+try {
+  await import('./engine_test.js');
+  await import('./source_charts_test.js');
+  for (const [name,fn] of tests) await fn();
+  document.querySelector('#result').textContent='PASS '+tests.length;
+} catch(e) { document.querySelector('#result').textContent='FAIL '+e.stack; }
+</script>

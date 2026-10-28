@@ -1,0 +1,10 @@
+.local/
+__pycache__/
+*.pyc
+data/raw/
+data/history/
+data/catalog.json
+data/refresh-status.json
+
+dist/
+data/public/
