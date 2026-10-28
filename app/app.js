@@ -612,8 +612,14 @@ function barChart(items) {
   const w = 950,
     n = items.length,
     values = items.map(value),
-    min = Math.min(0, ...values),
-    max = Math.max(...values, 1),
+    intervals = native()
+      ? items.flatMap((r) => {
+        const o = observation(r);
+        return [o?.ci_low, o?.ci_high].filter(finite);
+      })
+      : [],
+    min = Math.min(0, ...values, ...intervals),
+    max = Math.max(...values, ...intervals, 1),
     span = max - min || 1;
   const pad = state.layout === "vertical" ? 45 : 235,
     right = 65,
@@ -699,9 +705,11 @@ function barChart(items) {
         }" height="23" fill="${color(r)}" opacity="${
           state.selected === r.key ? 1 : .8
         }" rx="1"/>`
-    }<text class="label" x="${v + 8}" y="${
-      y + 6
-    }" style="font-variant-numeric:tabular-nums">${fmt(value(r))}</text>`;
+    }<text class="label" x="${
+      Math.max(v, native() && finite(obs?.ci_high) ? x(obs.ci_high) : v) + 8
+    }" y="${y + 6}" style="font-variant-numeric:tabular-nums">${
+      fmt(value(r))
+    }</text>`;
     if (native() && finite(obs?.ci_low) && finite(obs?.ci_high)) {
       out += `<path d="M${x(obs.ci_low)} ${y + 2}H${x(obs.ci_high)}M${
         x(obs.ci_low)
