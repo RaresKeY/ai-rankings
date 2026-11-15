@@ -10,6 +10,8 @@ import threading
 import time
 import urllib.parse
 import webbrowser
+import uuid
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -18,9 +20,47 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from catalog import write_catalog
 from refresh import refresh, ADAPTERS
 
-state = {"running": False, "messages": [], "result": None}
+state = {"running": False, "messages": [], "result": None, "run_id": None,
+         "started_at": None, "finished_at": None, "reason": None, "error": None}
 lock = threading.Lock()
 compressed_cache = {}
+
+
+def refresh_status():
+    with lock:
+        return {**state, "messages": list(state["messages"])}
+
+
+def start_refresh(names=ADAPTERS, reason="manual"):
+    with lock:
+        if state["running"]:
+            return False
+        state.update(running=True, messages=[], result=None, run_id=uuid.uuid4().hex,
+                     started_at=datetime.now(timezone.utc).isoformat(), finished_at=None,
+                     reason=reason, error=None)
+
+    def message(text):
+        with lock:
+            state["messages"].append(text)
+            del state["messages"][:-200]
+        print(text, flush=True)
+
+    def run():
+        try:
+            message("Updating sources in the background; saved results remain available.")
+            result = refresh(names, callback=message, cache=False)
+            with lock:
+                state["result"] = result
+        except Exception as exc:
+            message(str(exc))
+            with lock:
+                state["error"] = str(exc)
+        finally:
+            with lock:
+                state.update(running=False, finished_at=datetime.now(timezone.utc).isoformat())
+
+    threading.Thread(target=run, daemon=True, name="source-refresh").start()
+    return True
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -55,7 +95,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
         if path == "/api/refresh/status":
-            return self.send(state)
+            return self.send(refresh_status())
         if path == "/api/data":
             file = ROOT / "data/catalog.json"
             if not file.exists():
@@ -103,26 +143,15 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("Unknown source")
         except (ValueError, TypeError) as exc:
             return self.send({"error": str(exc)}, status=400)
-        with lock:
-            if state["running"]:
-                return self.send(state, status=409)
-            state.update(running=True, messages=[], result=None)
-        def run():
-            try:
-                result = refresh(names, callback=lambda message: state["messages"].append(message), cache=False)
-                state["result"] = result
-            except Exception as exc:
-                state["messages"].append(str(exc))
-            finally:
-                state["running"] = False
-        threading.Thread(target=run, daemon=True).start()
-        self.send(state, status=202)
+        started = start_refresh(names, reason="startup" if body.get("startup") is True else "manual")
+        self.send(refresh_status(), status=202 if started else 409)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8768)
     parser.add_argument("--open", action="store_true")
+    parser.add_argument("--refresh-on-start", action=argparse.BooleanOptionalAction, default=False)
     args = parser.parse_args()
     handler = Handler
     if not any((ROOT/'data/sources').glob('*.json')):
@@ -144,6 +173,16 @@ if __name__ == "__main__":
             with urllib.request.urlopen(f"http://127.0.0.1:{args.port}/api/health", timeout=2) as r:
                 if json.load(r).get("project") != "ai-rankings":
                     raise RuntimeError("Port belongs to another application")
+            if args.refresh_on_start and handler is Handler:
+                base = f"http://127.0.0.1:{args.port}"
+                request = urllib.request.Request(base + "/api/refresh", data=b'{"startup":true}',
+                    headers={"Content-Type": "application/json", "Origin": base}, method="POST")
+                try:
+                    with urllib.request.urlopen(request, timeout=5) as response:
+                        response.read()
+                except urllib.error.HTTPError as exc:
+                    if exc.code != 409:
+                        raise
             if args.open:
                 webbrowser.open(f"http://127.0.0.1:{args.port}")
             print(f"AI Rankings already running at http://127.0.0.1:{args.port}")
@@ -151,6 +190,8 @@ if __name__ == "__main__":
         except Exception:
             raise RuntimeError(f"Port {args.port} is in use. Choose another --port.")
     print(f"AI Rankings → http://127.0.0.1:{args.port}", flush=True)
+    if args.refresh_on_start and handler is Handler:
+        start_refresh(reason="startup")
     if args.open:
         threading.Timer(0.5, lambda: webbrowser.open(f"http://127.0.0.1:{args.port}")).start()
     try:

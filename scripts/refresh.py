@@ -17,6 +17,8 @@ from catalog import ROOT, write_catalog
 ADAPTERS = ("aa", "vals", "epoch", "arena", "terminalbench", "swebench")
 HOSTS = {"artificialanalysis.ai", "www.artificialanalysis.ai", "vals.ai", "www.vals.ai", "epoch.ai", "www.epoch.ai", "arena.ai", "lmarena.ai", "www.tbench.ai", "tbench.ai", "www.swebench.com", "swebench.com", "raw.githubusercontent.com", "github.com", "api.github.com", "huggingface.co", "datasets-server.huggingface.co", "cdn-lfs.huggingface.co", "cdn-lfs-us-1.huggingface.co", "cdn-lfs.hf.co"}
 HOSTS.add("ofhuhcpkvzjlejydnvyd.supabase.co")
+# Official Hugging Face resolve redirects for its Xet-backed dataset files.
+HOSTS.add("us.aws.cdn.hf.co")
 
 
 class SafeRedirect(urllib.request.HTTPRedirectHandler):

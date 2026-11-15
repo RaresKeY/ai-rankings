@@ -7,7 +7,7 @@ import unittest
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from public_data import public_pack, write_pack
-from refresh_public import refresh_public
+from refresh_public import refresh_public, REVIEWED_REPLACEMENTS
 from build_static import build
 
 
@@ -66,3 +66,40 @@ class PublicationTests(unittest.TestCase):
             self.assertNotIn('/api/',(root/'dist/config.js').read_text())
             self.assertTrue(catalog['publication']['commercial_reuse_only'])
             self.assertEqual(set(p.name for p in (root/'dist/data/snapshots').iterdir()),{'arena.json.gz','epoch.json.gz'})
+
+    def test_reviewed_task_replacement_requires_published_successor(self):
+        old, new = next(iter(REVIEWED_REPLACEMENTS['epoch'].items()))
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            previous=pack('epoch')
+            previous['observations'][0]['benchmark_id']=old
+            previous['benchmarks'][0]['id']=old
+            write_pack(previous,root/'data/public')
+            for bid, expected in [('unreviewed-task','error'), (new,'ok')]:
+                current=pack('epoch')
+                current['observations'][0]['benchmark_id']=bid
+                current['benchmarks'][0]['id']=bid
+                status=refresh_public(root,{'arena':lambda f:pack('arena'),'epoch':lambda f:current},lambda:None)
+                self.assertEqual(status['sources'][1]['status'],expected)
+                saved=json.loads((root/'data/public/epoch.json').read_text())
+                self.assertEqual(saved['observations'][0]['benchmark_id'],old if expected=='error' else new)
+
+    def test_reviewed_replacement_keeps_other_loss_guards(self):
+        old, new = next(iter(REVIEWED_REPLACEMENTS['epoch'].items()))
+        for other_loss in [False, True]:
+            with self.subTest(other_loss=other_loss), tempfile.TemporaryDirectory() as directory:
+                root=Path(directory)
+                previous=pack('epoch')
+                previous['benchmarks']=[{**previous['benchmarks'][0],'id':bid} for bid in [old,'other-task']]
+                previous['observations']=[{**previous['observations'][0],'benchmark_id':old,'model':str(i)} for i in range(10)]
+                if other_loss:
+                    previous['observations'].append({**previous['observations'][0],'benchmark_id':'other-task'})
+                write_pack(previous,root/'data/public')
+                before=(root/'data/public/epoch.json').read_bytes()
+                current=pack('epoch')
+                current['benchmarks'][0]['id']=new
+                current['observations']=[{**current['observations'][0],'benchmark_id':new,'model':str(i)}
+                                         for i in range(10 if other_loss else 1)]
+                status=refresh_public(root,{'arena':lambda f:pack('arena'),'epoch':lambda f:current},lambda:None)
+                self.assertEqual(status['sources'][1]['status'],'error')
+                self.assertEqual((root/'data/public/epoch.json').read_bytes(),before)

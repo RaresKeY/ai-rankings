@@ -7,7 +7,7 @@ The catalogue is built from six evaluator/source families. Each adapter exposes 
 | Artificial Analysis | Public serialized page data from the model page, evaluation catalog and media leaderboards | 22,511 observations, 256 series; index components, domain indices, cost/performance and media categories |
 | Vals AI | Public benchmark catalog/pages, discovered `benchmark_view_*.json`, model-registry literals and specialized chart props | 27,946 observations, 505 series; tasks/versions, 327 original chart records and 95 component families |
 | Epoch AI | Official benchmark ZIP/internal CSV/Cyber ECI CSV, benchmark catalog and external benchmark configuration | 9,392 distinct observations, 224 series; original evaluator citations, ECI, fits and adjusted input data |
-| Arena | Official `lmarena-ai/leaderboard-dataset` on Hugging Face via its paginated rows API | 30,652 observations, 145 series; text, vision, search, code, image, video and Agent categories; 1,949 dated Agent history records |
+| Arena | Official `lmarena-ai/leaderboard-dataset` on Hugging Face; complete native Parquet shards pinned to one dataset revision | Initial snapshot: 30,652 observations, 145 series; text, vision, search, code, image, video and Agent categories; 1,949 dated Agent history records |
 | Terminal-Bench | Official public Harbor leaderboard-read endpoint used by `tbench.ai` | 456 observations, 13 series; 4.0, 3.0, 2.1, 2.0 and Science 0.1, including available pass@k |
 | SWE-bench | Official website repository's `data/leaderboards.json` | 1,336 observations, 59 series; official splits, submissions, harness/model setups and published metrics |
 
@@ -18,6 +18,8 @@ Counts reflect the initial snapshot, not a promise that every source publishes t
 AA's published composite is imported directly. Individual source component weights are available for exploration, but raw arithmetic does not reconstruct calibrated Elo components. General endpoint speed/latency cannot impersonate task runtime. Privacy can be mixed: a partially private composite is not simply public or private.
 
 Arena raw and style-controlled ratings/categories stay separate. Bradley–Terry ratings are not labelled literal Elo. Agent IPS effects are percentage-point effects that can be negative, not success rates. The full historical Arena archive is not downloaded; only the imported dated Agent history is displayed.
+
+Arena's manifest selects all `latest` shards plus Agent's `full` history only. File URLs and shard order are validated and constructed locally under the official dataset's exact revision. `scripts/adapters/arena_parquet.py` reads flat optional/required primitive columns, v1 data/dictionary pages, PLAIN/RLE dictionary values and uncompressed/Snappy/Gzip blocks, without downloaded packages. Unsupported layouts and incomplete current categories fail the collection. Observation URLs identify the exact native shard. The paginated viewer reader is retained for reference checks but is no longer required for refreshes.
 
 Terminal-Bench and SWE-bench are submitted model-plus-agent runs. Their evidence must retain run IDs, harness versions and effort. Partial reported run cost cannot become mean task cost. Terminal mean trial cost is derived only from complete total cost and trial count. Pass@k remains distinct from single-attempt accuracy, without borrowed intervals. Science standard errors are not 95% intervals.
 

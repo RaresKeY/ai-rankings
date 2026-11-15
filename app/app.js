@@ -183,6 +183,10 @@ const defaults = {
   chartLabel: "",
   chartMode: "bars",
 };
+let refreshState = null,
+  refreshTimer = null,
+  refreshPolling = false,
+  reloadedRefresh = null;
 let state = { ...defaults },
   index,
   rows = [],
@@ -390,16 +394,7 @@ function shell() {
     state.showInspector ? "show-inspector" : ""
   } ${
     state.hideInspector ? "full-width" : ""
-  }"><header class="topbar"><button class="icon-button quiet-button nav-toggle" data-action="nav" aria-label="Toggle navigation">☰</button><div class="brand"><img src="icon.svg" alt="">AI Rankings</div><span class="spacer"></span><span class="refresh-date small muted">${
-    index.data.sources.length
-      ? `Built ${
-        new Date(index.data.generated_at).toLocaleDateString(undefined, {
-          month: "short",
-          day: "numeric",
-        })
-      }`
-      : "No sources loaded"
-  }</span><button class="quiet-button share-button" data-action="share" title="Copy a link containing these settings">Copy view link</button><button class="export-button" data-action="export">Export CSV</button><button class="icon-button" data-action="inspector" title="Toggle controls and evidence" aria-label="Toggle controls and evidence">☷</button></header>${sidebar()}<main class="main quiet-scroll" id="main"></main><aside class="inspector quiet-scroll" id="inspector"></aside><footer class="statusbar"><span>${
+  }"><header class="topbar"><button class="icon-button quiet-button nav-toggle" data-action="nav" aria-label="Toggle navigation">☰</button><div class="brand"><img src="icon.svg" alt="">AI Rankings</div><span class="spacer"></span><span id="refresh-indicator" class="refresh-date small muted">${refreshLabel()}</span><button class="quiet-button share-button" data-action="share" title="Copy a link containing these settings">Copy view link</button><button class="export-button" data-action="export">Export CSV</button><button class="icon-button" data-action="inspector" title="Toggle controls and evidence" aria-label="Toggle controls and evidence">☷</button></header>${sidebar()}<main class="main quiet-scroll" id="main"></main><aside class="inspector quiet-scroll" id="inspector"></aside><footer class="statusbar"><span>${
     fmt(index.data.models.length, 0)
   } models · ${
     fmt(index.data.benchmarks.filter((b) => b.observation_count).length, 0)
@@ -1454,7 +1449,7 @@ function sourcesView() {
       runtime.mode === "static" ? "Reload data" : "Refresh sources"
     }</button>`,
   ) +
-    `${publicationPanel()}<div id="refresh-status"></div><div class="stat-line"><span><strong>${all.length}</strong>Evaluators</span><span><strong>${
+    `${publicationPanel()}<div id="refresh-status">${refreshProgress()}</div><div class="stat-line"><span><strong>${all.length}</strong>Evaluators</span><span><strong>${
       fmt(index.data.observations.length, 0)
     }</strong>Observed results</span><span><strong>${
       index.data.visualizations?.length || 0
@@ -2219,6 +2214,83 @@ function exportSVG() {
     "image/svg+xml",
   );
 }
+function refreshLabel() {
+  if (refreshState?.running) {
+    return '<button class="quiet-button" data-view="sources">Updating sources…</button>';
+  }
+  if (
+    refreshState?.error || refreshState?.result?.some((s) => s.status !== "ok")
+  ) {
+    return '<button class="quiet-button" data-view="sources">Update needs attention</button>';
+  }
+  if (refreshState?.finished_at) {
+    return "Updated " +
+      esc(
+        new Date(refreshState.finished_at).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      );
+  }
+  return index.data.sources.length
+    ? "Built " +
+      esc(
+        new Date(index.data.generated_at).toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+        }),
+      )
+    : "No sources loaded";
+}
+function refreshProgress() {
+  if (!refreshState?.run_id) return "";
+  return `<section class="section"><h3>${
+    refreshState.running ? "Updating sources…" : "Update finished"
+  }</h3><pre class="progress-log quiet-scroll">${
+    esc(refreshState.messages.slice(-12).join("\n"))
+  }</pre></section>`;
+}
+function showRefreshStatus() {
+  const indicator = $("#refresh-indicator"), progress = $("#refresh-status");
+  if (indicator) indicator.innerHTML = refreshLabel();
+  if (progress) progress.innerHTML = refreshProgress();
+}
+async function pollRefreshStatus() {
+  if (runtime.mode !== "local" || refreshPolling) return;
+  clearTimeout(refreshTimer);
+  refreshPolling = true;
+  try {
+    const previous = refreshState;
+    refreshState = await readJSON("api/refresh/status");
+    showRefreshStatus();
+    const id = refreshState.run_id;
+    if (
+      id && !refreshState.running && reloadedRefresh !== id &&
+      (previous?.running || (previous?.run_id && previous.run_id !== id) ||
+        Date.parse(index.data.generated_at) <
+          Date.parse(refreshState.started_at))
+    ) {
+      reloadedRefresh = id;
+      chartCache.clear();
+      loadedChart = null;
+      await loadData(false);
+      toast(
+        refreshState.error ||
+          refreshState.result?.some((s) => s.status !== "ok")
+          ? "Update finished. Some sources kept the previous data."
+          : "Sources updated.",
+      );
+    }
+  } catch {
+    // Retry while the local server is restarting or temporarily unavailable.
+  } finally {
+    refreshPolling = false;
+    refreshTimer = setTimeout(
+      pollRefreshStatus,
+      refreshState?.running ? 1500 : 10000,
+    );
+  }
+}
 async function refreshSources(sources) {
   if (runtime.mode === "static") {
     chartCache.clear();
@@ -2227,7 +2299,7 @@ async function refreshSources(sources) {
     return;
   }
   try {
-    const response = await fetch("/api/refresh", {
+    const response = await fetch("api/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(sources ? { sources } : {}),
@@ -2236,26 +2308,8 @@ async function refreshSources(sources) {
       throw Error("Refresh could not start");
     }
     set({ view: "sources" });
-    toast("Source refresh started. Existing results remain available.");
-    const poll = async () => {
-      const s = await (await fetch("/api/refresh/status")).json();
-      const node = $("#refresh-status");
-      if (node) {
-        node.innerHTML = `<section class="section"><h3>${
-          s.running ? "Refreshing public sources…" : "Refresh finished"
-        }</h3><pre class="progress-log quiet-scroll">${
-          esc(s.messages.slice(-12).join("\n"))
-        }</pre></section>`;
-      }
-      if (s.running) setTimeout(poll, 1500);
-      else {
-        await loadData(false);
-        toast(
-          "Source refresh finished. Check source status for any retained snapshots.",
-        );
-      }
-    };
-    poll();
+    toast("Updating sources. Saved results remain available.");
+    await pollRefreshStatus();
   } catch (e) {
     toast(e.message);
   }
@@ -2506,6 +2560,7 @@ async function loadData(initial = true) {
   }
   render();
   save();
+  if (initial && runtime.mode === "local") pollRefreshStatus();
   window.__rankings = {
     state,
     index,

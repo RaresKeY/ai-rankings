@@ -14,6 +14,16 @@ from public_data import PROVIDERS, public_pack, write_pack
 from refresh import Fetcher
 
 
+# Reviewed against Epoch's official run CSV on 2026-11-15. These are distinct
+# task versions: accept the withdrawal only while its published replacement exists.
+REVIEWED_REPLACEMENTS = {
+    'epoch': {
+        'epoch-spireclimb-slay-the-spire-1-ascension-20-heart-0-3-3-24156a4':
+            'epoch-spireclimb-slay-the-spire-1-ascension-20-heart-0-3-3-cd56aef',
+    },
+}
+
+
 class PublicFetcher(Fetcher):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -72,8 +82,11 @@ def refresh_public(root=ROOT, collectors=None, fetch_factory=None):
             if previous:
                 old_tests = {o['benchmark_id'] for o in previous['observations']}
                 new_tests = {o['benchmark_id'] for o in pack['observations']}
-                if old_tests - new_tests:
-                    raise ValueError(f'Import lost {len(old_tests-new_tests)} populated tests; adapter review required')
+                replacements = REVIEWED_REPLACEMENTS.get(provider, {})
+                missing = old_tests - new_tests
+                unexpected = {bid for bid in missing if replacements.get(bid) not in new_tests}
+                if unexpected:
+                    raise ValueError('Import lost populated tests; adapter review required: '+', '.join(sorted(unexpected)))
                 if len(pack['observations']) < .8 * len(previous['observations']):
                     raise ValueError('Import lost over 20% of results; adapter review required')
             write_pack(pack, directory)

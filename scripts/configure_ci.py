@@ -63,6 +63,7 @@ jobs:
       - name: Restore last published data
         run: python3 scripts/refresh_public.py --restore-only
       - name: Update approved sources
+        id: refresh
         if: github.event_name != 'push'
         run: python3 scripts/refresh_public.py
       - name: Build public website
@@ -78,7 +79,7 @@ jobs:
       - name: Verify hosted files
         run: python3 scripts/verify_hosted.py
       - name: Report incomplete refresh
-        if: always()
+        if: always() && steps.refresh.outcome == 'success'
         run: |
           python3 - <<'PY'
           import json

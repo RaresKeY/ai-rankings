@@ -34,7 +34,7 @@ python3 scripts/build_static.py
 python3 -m http.server 8770 --bind 127.0.0.1 --directory dist
 ```
 
-The original workspace also supports a larger local research dataset under `data/sources/`. If those packs exist, the launcher uses its local server and refresh controls. These files and their Git history are not part of the public repository. Importer code does not grant rights to redistribute upstream data.
+The original workspace also supports a larger local research dataset under `data/sources/`. If those packs exist, the Playpad entry and `./play.sh` open the saved results immediately and refresh all six sources in the background on every launch. The header shows update progress, and open views reload automatically when the update finishes. Reopening the app reuses the existing server and active update. Failed sources keep their last successful snapshots. Use `./play.sh --no-refresh-on-start` to skip the startup update. These files and their Git history are not part of the public repository. Importer code does not grant rights to redistribute upstream data.
 
 ## Automated updates and hosting
 

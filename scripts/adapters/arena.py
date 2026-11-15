@@ -1,6 +1,6 @@
-"""Official Arena public leaderboard snapshots via Hugging Face's rows API.
+"""Official Arena public leaderboard snapshots from Hugging Face's native files.
 
-No hosted model calls, parquet dependency or third-party leaderboard mirrors.
+No hosted model calls, downloaded dependencies or third-party mirrors.
 All latest snapshots are imported, plus a separate dated Agent Arena history.
 """
 from concurrent.futures import ThreadPoolExecutor
@@ -12,10 +12,13 @@ import time
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 
+from .arena_parquet import read as read_parquet
+
 DATASET = 'lmarena-ai/leaderboard-dataset'
 DATA_URL = 'https://huggingface.co/datasets/' + DATASET
 SPLITS_URL = 'https://datasets-server.huggingface.co/splits?' + urlencode({'dataset': DATASET})
 README_URL = DATA_URL + '/raw/main/README.md'
+MANIFEST_URL = 'https://huggingface.co/api/datasets/' + DATASET
 METHOD_URL = 'https://arena.ai/blog/leaderboard-changelog'
 AGENT_METHOD_URL = 'https://arena.ai/blog/agent-arena-methodology'
 LABELS = {
@@ -92,6 +95,41 @@ def arena_category(config, native):
     return 'Preference'
 
 
+def snapshot_files(manifest):
+    """Pin all shards to one revision; never follow data-supplied URLs."""
+    revision = manifest.get('sha', '')
+    if not re.fullmatch(r'[0-9a-f]{40}', revision):
+        raise ValueError('Invalid Arena dataset revision')
+    groups = {}
+    for item in manifest['siblings']:
+        path = item['rfilename']
+        match = re.fullmatch(r'([a-z_]+)/(latest|full)-(\d{5})-of-(\d{5})\.parquet', path)
+        if match and (match[2] == 'latest' or match[1] == 'agent'):
+            groups.setdefault((match[1], match[2]), []).append((int(match[3]), int(match[4]), path))
+    if not groups or ('agent', 'latest') not in groups:
+        raise ValueError('Arena latest snapshot files missing')
+    files = {}
+    for key, shards in groups.items():
+        shards.sort()
+        total = shards[0][1]
+        if not 1 <= total <= 32 or [s[:2] for s in shards] != [(i, total) for i in range(total)]:
+            raise ValueError('Incomplete Arena snapshot shards: ' + key[0])
+        files[key] = [DATA_URL + '/resolve/' + revision + '/' + shard[2] for shard in shards]
+    return revision, files
+
+
+def snapshot_rows(fetch, urls):
+    rows = []
+    for url in urls:
+        for item in read_parquet(fetch(url)):
+            item['_source_url'] = url
+            item['_row_index'] = len(rows)
+            rows.append(item)
+    if not rows:
+        raise ValueError('Empty Arena snapshot')
+    return rows
+
+
 def parse_rows(config, rows):
     benchmarks, observations = {}, []
     agent = config.startswith('agent')
@@ -148,38 +186,38 @@ def parse_rows(config, rows):
 
 
 def collect(fetch):
-    splits = json.loads(fetch(SPLITS_URL))
-    readme = fetch(README_URL).decode('utf-8')
+    revision, files = snapshot_files(json.loads(fetch(MANIFEST_URL)))
+    readme = fetch(DATA_URL + '/raw/' + revision + '/README.md').decode('utf-8')
     license_match = re.search(r'^license:\s*(.+)$', readme, re.M)
     license_name = license_match.group(1).strip() if license_match else 'Not stated'
-    configs = sorted({item['config'] for item in splits['splits'] if item['split'] == 'latest'})
+    configs = sorted(config for config, split in files if split == 'latest')
     pack = {'schema_version': 1, 'provider': 'arena',
             'retrieved_at': datetime.now(timezone.utc).isoformat(),
             'sources': [], 'benchmarks': [], 'observations': [], 'history': [], 'inventory': []}
     def one(config):
-        try:
-            return config, parse_rows(config, read_rows(fetch, config)), None
-        except Exception as exc:
-            return config, ([], []), str(exc)
+        parsed = parse_rows(config, snapshot_rows(fetch, files[config, 'latest']))
+        if not parsed[1]:
+            raise ValueError('No Arena observations in ' + config)
+        return config, parsed
     with ThreadPoolExecutor(max_workers=4) as executor:
         results = list(executor.map(one, configs))
-    for config, (benchmarks, observations), error in results:
+    for config, (benchmarks, observations) in results:
         pack['benchmarks'].extend(benchmarks)
         pack['observations'].extend(observations)
         pack['sources'].append({
             'id': 'arena-' + slug(config), 'name': 'Arena · ' + LABELS.get(config, config),
-            'url': 'https://arena.ai/leaderboard', 'data_url': rows_url(config),
+            'url': 'https://arena.ai/leaderboard', 'data_url': files[config, 'latest'][0],
             'methodology_url': AGENT_METHOD_URL if config.startswith('agent') else METHOD_URL,
-            'status': 'unavailable' if error else 'ok', 'license': license_name,
-            'notes': 'Official Arena Hugging Face dataset. All latest rows paginated through the public JSON API. '
-                     'Source publication dates retained. ' + (error or f'{len(observations)} observations in {len(benchmarks)} categories.'),
+            'status': 'ok', 'license': license_name,
+            'notes': 'Official Arena Hugging Face dataset, revision ' + revision + '. Complete native Parquet snapshot. '
+                     f'Source publication dates retained. {len(observations)} observations in {len(benchmarks)} categories.',
         })
         pack['inventory'].append({'name': LABELS.get(config, config), 'url': DATA_URL + '/viewer/' + config + '/latest',
                                   'type': 'category', 'supported_view': 'Rankings / matrix / confidence intervals',
-                                  'status': 'unavailable' if error else 'data-only',
-                                  'notes': error or f'All {len(benchmarks)} published native categories imported; separate metric per category.'})
+                                  'status': 'data-only',
+                                  'notes': f'All {len(benchmarks)} published native categories imported; separate metric per category.'})
     try:
-        _, history = parse_rows('agent', read_rows(fetch, 'agent', 'full'))
+        _, history = parse_rows('agent', snapshot_rows(fetch, files['agent', 'full']))
         for item in history:
             item['notes'] = item['notes'].replace('Official latest snapshot', 'Official dated historical snapshot')
         pack['history'] = history
