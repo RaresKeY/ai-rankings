@@ -21,6 +21,10 @@ README_URL = DATA_URL + '/raw/main/README.md'
 MANIFEST_URL = 'https://huggingface.co/api/datasets/' + DATASET
 METHOD_URL = 'https://arena.ai/blog/leaderboard-changelog'
 AGENT_METHOD_URL = 'https://arena.ai/blog/agent-arena-methodology'
+AGENT_INDEX_CONFIGS = {'agent_capability', 'agent_task_outcome', 'agent_tool_efficiency'}
+AGENT_IPS_CONFIGS = {'agent', 'agent_bash_recovery_steps', 'agent_bash_reliability',
+                     'agent_praise_complaint', 'agent_steerability',
+                     'agent_task_outcome_explicit', 'agent_tool_hallucination'}
 LABELS = {
     'text': 'Text', 'text_style_control': 'Text · style controlled',
     'text_factuality': 'Text · factuality', 'vision': 'Vision',
@@ -33,6 +37,9 @@ LABELS = {
     'agent_bash_reliability': 'Agent · bash reliability',
     'agent_praise_complaint': 'Agent · praise vs complaint',
     'agent_steerability': 'Agent · steerability',
+    'agent_capability': 'Agent · capability index',
+    'agent_task_outcome': 'Agent · task outcome index',
+    'agent_tool_efficiency': 'Agent · tool use index',
     'agent_task_outcome_explicit': 'Agent · confirmed success',
     'agent_tool_hallucination': 'Agent · tool hallucination',
 }
@@ -133,8 +140,10 @@ def snapshot_rows(fetch, urls):
 def parse_rows(config, rows):
     benchmarks, observations = {}, []
     agent = config.startswith('agent')
+    indexed = config in AGENT_INDEX_CONFIGS
+    metric = 'index_score' if indexed else 'score' if agent else 'rating'
+    factor = 100 if agent and not indexed else 1
     for row in rows:
-        metric = 'score' if agent else 'rating'
         if not number(row.get(metric)) or not row.get('model_name'):
             continue
         native = row.get('category') or 'overall'
@@ -145,17 +154,18 @@ def parse_rows(config, rows):
             benchmarks[bid] = {
                 'id': bid, 'name': 'Arena ' + label, 'provider': 'arena',
                 'category': arena_category(config, native), 'native_category': config + '/' + native,
-                'unit': 'pp' if agent else 'score', 'higher_is_better': True,
+                'unit': 'pp' if agent and not indexed else 'score', 'higher_is_better': True,
                 'min': None, 'max': None, 'version': 'latest/' + config,
                 'source_url': 'https://arena.ai/leaderboard', 'dataset_url': DATA_URL + '/viewer/' + config + '/latest',
-                'description': ('Causal IPS net improvement, displayed in percentage points; not task accuracy. '
+                'description': ('Published Agent Arena index, anchored to reference models; not a percentage-point effect. '
+                                'Index scores and raw signal rates remain separate.' if indexed else
+                                'Causal IPS net improvement, displayed in percentage points; not task accuracy. '
                                 'Higher means better, including negatively coded failure signals. '
                                 'Bash recovery was replaced by bash reliability on 2026-10-12.' if agent else
                                 'Human preference Bradley–Terry rating. Different categories and style controls '
                                 'are distinct populations, not a shared absolute ability scale.'),
-                'private': None, 'kind': 'composite' if config == 'agent' else 'benchmark',
+                'private': None, 'kind': 'composite' if config == 'agent' or indexed else 'benchmark',
             }
-        factor = 100 if agent else 1
         license_name = row.get('license') or ''
         weights = 'proprietary' if license_name.lower() == 'proprietary' else (
             'open' if license_name and license_name.lower() not in ('-', 'other', 'unknown') else 'unknown')
@@ -170,12 +180,17 @@ def parse_rows(config, rows):
             'date': row.get('leaderboard_publish_date'), 'weights': weights,
             'source_model_id': model, 'rank': row.get('rank'), 'model_license': license_name or None,
             'notes': ('Official latest snapshot; category ' + native + '; ' +
-                      ('IPS net improvement × 100 (percentage points), not success rate. ' if agent else
+                      ('Published index_score on its original anchored scale. ' if indexed else
+                       'IPS net improvement × 100 (percentage points), not success rate. ' if agent else
                        'Bradley–Terry rating; ' + ('style controlled. ' if config.endswith('style_control') else 'raw category setting. ')) +
                       'License field copied from Arena; open indicates a non-proprietary listed license.'),
         }
-        for target, source in [('ci_low', 'score_ci_lower' if agent else 'rating_lower'),
-                               ('ci_high', 'score_ci_upper' if agent else 'rating_upper')]:
+        if indexed:
+            item['source_metrics'] = {field: row[field] for field in
+                                      ('raw_score', 'raw_score_ci_lower', 'raw_score_ci_upper')
+                                      if number(row.get(field))}
+        for target, source in [('ci_low', metric + '_ci_lower' if agent else 'rating_lower'),
+                               ('ci_high', metric + '_ci_upper' if agent else 'rating_upper')]:
             if number(row.get(source)):
                 item[target] = row[source] * factor
         for field in ('vote_count', 'observation_count', 'session_count', 'variance'):

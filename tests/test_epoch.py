@@ -57,6 +57,36 @@ class EpochAdapterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             transform_scale({"transform": parsed["transform"]})
 
+    def test_minified_config_follows_explicit_public_export(self):
+        original_fetch = fixture_fetch()
+        config = original_fetch(CONFIG).decode().replace("var externalBenchmarkConfigs = ", "var k=")
+        config = ('"use strict";(()=>{var other={unrelated:true};' + config
+                  + 'typeof window<"u"&&(window.legacyExports.externalBenchmarkConfigs=k);})();')
+
+        def fetch(url):
+            return config.encode() if url == CONFIG else original_fetch(url)
+
+        pack = collect(fetch)
+        external = next(o for o in pack["observations"] if o["provenance"] == "external-via-epoch")
+        self.assertEqual(external["score"], 75)
+        self.assertEqual(external["benchmark_id"], "epoch-weirdml")
+        self.assertEqual(external["source_url"], "https://upstream.example/result")
+        self.assertEqual(len(pack["observations"]), 4)
+
+    def test_minified_config_rejects_unresolved_or_computed_exports(self):
+        original_fetch = fixture_fetch()
+        for name in ("k", "externalBenchmarkConfigs"):
+            config = original_fetch(CONFIG).decode().replace("var externalBenchmarkConfigs = ", "var " + name + "=")
+            for export in ("missing", name + "()", name + ".metrics"):
+                with self.subTest(name=name, export=export):
+                    def fetch(url):
+                        if url == CONFIG:
+                            return (config + 'window.legacyExports.externalBenchmarkConfigs=' + export + ';').encode()
+                        return original_fetch(url)
+
+                    with self.assertRaisesRegex(ValueError, "Epoch external config missing"):
+                        collect(fetch)
+
     def test_percentage_scaling_and_lower_is_better(self):
         rows = metric_definition("aider", {"accuracy": {"column": "Percent correct", "transform": {"expression": "(x) => parseFloat(x) / 100"}}}, {})
         self.assertEqual(rows[0][2:4], ("%", 1))

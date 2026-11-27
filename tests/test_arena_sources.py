@@ -17,6 +17,34 @@ class ArenaSourceTests(unittest.TestCase):
         self.assertEqual(observations[0]['effort'], 'max')
         self.assertEqual(benchmarks[0]['unit'], 'pp')
 
+    def test_agent_indexes_keep_published_scale_and_raw_signals_separate(self):
+        for config in ('agent_capability', 'agent_task_outcome', 'agent_tool_efficiency'):
+            with self.subTest(config=config):
+                row = {'model_name': 'Model (High)', 'category': 'code',
+                       'index_score': 1241.12, 'index_score_ci_lower': 1235.91,
+                       'index_score_ci_upper': 1246.32, 'raw_score': 0.983,
+                       'raw_score_ci_lower': 0.982, 'raw_score_ci_upper': 0.984,
+                       'score': -0.12, 'score_ci_lower': -0.2, 'score_ci_upper': -0.04}
+                benchmarks, observations = arena.parse_rows(config, [row])
+                benchmark, observation = benchmarks[0], observations[0]
+                self.assertEqual(benchmark['unit'], 'score')
+                self.assertEqual(benchmark['kind'], 'composite')
+                self.assertIn('anchored', benchmark['description'])
+                self.assertEqual(observation['score'], 1241.12)
+                self.assertEqual(observation['ci_low'], 1235.91)
+                self.assertEqual(observation['ci_high'], 1246.32)
+                self.assertEqual(observation['source_metrics']['raw_score'], 0.983)
+                self.assertNotEqual(observation['benchmark_id'], 'arena-agent-code')
+                row['index_score'] = None
+                self.assertEqual(arena.parse_rows(config, [row]), ([], []))
+
+    def test_agent_index_missing_raw_values_remain_missing(self):
+        row = {'model_name': 'Model', 'index_score': 1448.5,
+               'raw_score': None, 'raw_score_ci_lower': None, 'raw_score_ci_upper': None}
+        _, observations = arena.parse_rows('agent_capability', [row])
+        self.assertEqual(observations[0]['source_metrics'], {})
+        self.assertNotIn('ci_low', observations[0])
+
     def test_style_control_and_raw_categories_are_separate(self):
         rows = [{'model_name': 'Model', 'rating': 1440, 'rating_lower': 1430,
                  'rating_upper': 1450, 'category': 'coding'}]

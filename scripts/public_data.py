@@ -2,6 +2,7 @@
 import copy
 import json
 from pathlib import Path
+from adapters.arena import AGENT_IPS_CONFIGS
 
 POLICY_VERSION = 1
 PROVIDERS = ('arena', 'epoch')
@@ -41,7 +42,8 @@ def public_pack(pack):
     ids={o['benchmark_id'] for o in out['observations']}
     out['benchmarks']=[b for b in out['benchmarks'] if b['id'] in ids]
     for b in out['benchmarks']:
-        if provider=='arena' and b.get('native_category','').startswith('agent'):b['unit']='pp'
+        if provider=='arena' and b.get('native_category','').split('/')[0] in AGENT_IPS_CONFIGS:
+            b['unit']='pp'
         if 'components' in b:b['components']=[c for c in b['components'] if c.get('benchmark_id') in ids]
     for source in out['sources']:
         source.update(license='CC BY 4.0',license_url=CC_BY)

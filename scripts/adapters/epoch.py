@@ -284,7 +284,14 @@ def collect(fetch):
     catalog, catalog_url = load_catalog(fetch)
     catalog_by_id = {item["id"]: item for item in catalog.values() if isinstance(item, dict) and "id" in item}
     config_text = fetch(CONFIG).decode()
-    marker = re.search(r"var externalBenchmarkConfigs\s*=\s*\{", config_text)
+    export_assignment = re.search(r"\bwindow\.legacyExports\.externalBenchmarkConfigs\s*=", config_text)
+    config_name = "externalBenchmarkConfigs"
+    if export_assignment:
+        exported = re.match(r"\s*([A-Za-z_$][\w$]*)\s*(?=[;)])", config_text[export_assignment.end():])
+        if not exported:
+            raise ValueError("Epoch external config missing")
+        config_name = exported[1]
+    marker = re.search(r"\b(?:var|const|let)\s+" + re.escape(config_name) + r"\s*=\s*\{", config_text)
     if not marker:
         raise ValueError("Epoch external config missing")
     configs = LiteralReader(config_text, marker.end() - 1).value()

@@ -5,6 +5,7 @@ import math
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from adapters.arena import AGENT_IPS_CONFIGS
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -73,7 +74,7 @@ def compile_catalog(root=ROOT, source_dir=None):
                 b.setdefault("category", "Other")
                 b.setdefault("higher_is_better", True)
                 b.setdefault("kind", "benchmark")
-                if provider == "arena" and b.get("native_category", "").startswith("agent"):
+                if provider == "arena" and b.get("native_category", "").split("/")[0] in AGENT_IPS_CONFIGS:
                     b["unit"] = "pp"
                 benchmarks[b["id"]] = b
             for raw in pack.get("observations", []):

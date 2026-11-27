@@ -9,6 +9,8 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from public_data import public_pack, write_pack
 from refresh_public import refresh_public, REVIEWED_REPLACEMENTS
 from build_static import build
+from catalog import compile_catalog
+from adapters import arena
 
 
 def pack(provider, observations=None):
@@ -50,6 +52,38 @@ class PublicationTests(unittest.TestCase):
             changed=pack('epoch');changed['observations'][0]['benchmark_id']='new'
             status=refresh_public(root,{'arena':lambda f:pack('arena'),'epoch':lambda f:changed},lambda:None)
             self.assertEqual(status['sources'][1]['status'],'error')
+
+    def test_agent_index_units_survive_public_filter_catalog_and_static_build(self):
+        source=pack('arena')
+        source['benchmarks'], source['observations'] = [], []
+        for config in ('agent_capability', 'agent_task_outcome', 'agent_tool_efficiency', 'agent'):
+            benchmarks, observations=arena.parse_rows(config, [{'model_name':'Model', 'index_score':1241.12,
+                'index_score_ci_lower':1235.91, 'index_score_ci_upper':1246.32,
+                'raw_score':0.983, 'score':-0.12, 'score_ci_lower':-0.2, 'score_ci_upper':-0.04}])
+            if config == 'agent':
+                benchmarks[0]['unit']='%'  # Legacy seed label still needs migration.
+            source['benchmarks'].extend(benchmarks)
+            source['observations'].extend(observations)
+        approved=public_pack(source)
+        expected={'arena-agent-capability-overall':'score', 'arena-agent-task-outcome-overall':'score',
+                  'arena-agent-tool-efficiency-overall':'score', 'arena-agent-overall':'pp'}
+        self.assertEqual({b['id']:b['unit'] for b in approved['benchmarks']},expected)
+        self.assertEqual(public_pack(approved),approved)
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root/'data/sources').mkdir(parents=True)
+            (root/'data/sources/arena.json').write_text(json.dumps(source))
+            catalog=compile_catalog(root)
+            self.assertEqual({b['id']:b['unit'] for b in catalog['benchmarks']},expected)
+            (root/'app').mkdir();(root/'app/index.html').write_text('<div id="app"></div>')
+            (root/'icon.svg').write_text('<svg/>');(root/'THIRD_PARTY_NOTICES.md').write_text('Attribution')
+            write_pack(source,root/'data/public');write_pack(pack('epoch'),root/'data/public')
+            build(root)
+            catalog=json.loads(gzip.decompress((root/'dist/data/catalog.json.gz').read_bytes()))
+            self.assertEqual({b['id']:b['unit'] for b in catalog['benchmarks'] if b['provider']=='arena'},expected)
+            scores={o['benchmark_id']:o['score'] for o in catalog['observations'] if o['provider']=='arena'}
+            self.assertEqual(scores['arena-agent-overall'],-12)
+            self.assertEqual(scores['arena-agent-capability-overall'],1241.12)
 
     def test_static_build_ignores_private_sources_and_uses_relative_urls(self):
         with tempfile.TemporaryDirectory() as directory:
